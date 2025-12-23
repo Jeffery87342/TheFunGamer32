@@ -1,9 +1,15 @@
-from curl_cffi import requests
+try:
+    from curl_cffi.requests import Session as CurlSession
+    USE_CURL_CFFI = True
+except ImportError:
+    import requests
+    USE_CURL_CFFI = False
+
 from util import Util
 
 class Session:
     @staticmethod
-    def session() -> requests.Session:
+    def session():
         browsers = [
             ("chrome136", '"Google Chrome";v="141", "Not?A_Brand";v="8", "Chromium";v="141"', "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36")
         ]
@@ -11,11 +17,17 @@ class Session:
         browser = browsers[0]
         proxy = Util.get_random_proxy()
 
-        session = requests.Session(
-            impersonate="chrome_133",
-            proxy=proxy,
-            verify=False
-        )
+        if USE_CURL_CFFI:
+            session = CurlSession(
+                impersonate="chrome_133",
+                proxy=proxy,
+                verify=False
+            )
+        else:
+            session = requests.Session()
+            if proxy:
+                session.proxies = {'http': proxy, 'https': proxy}
+            session.verify = False
 
         headers = {
             'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
@@ -36,7 +48,8 @@ class Session:
         }
 
         session.headers = Util.sort_dict_order(headers)
-        session.proxy = proxy
+        if USE_CURL_CFFI and proxy:
+            session.proxy = proxy
 
         return session
 

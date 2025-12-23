@@ -1,5 +1,11 @@
-import tkinter as tk
-from tkinter import ttk, scrolledtext, messagebox
+try:
+    import tkinter as tk
+    from tkinter import ttk, scrolledtext, messagebox
+    TKINTER_AVAILABLE = True
+except ImportError:
+    TKINTER_AVAILABLE = False
+    print("Warning: tkinter not available. Please use main_console.py instead.")
+
 from threading import Thread, Event
 from time import gmtime, strftime, sleep
 from counter import counter
@@ -7,6 +13,19 @@ from group_joiner import GroupJoiner
 from output import Output
 import sys
 import os
+
+if not TKINTER_AVAILABLE:
+    print("\n" + "="*60)
+    print("ERROR: tkinter is not installed on your system.")
+    print("\nPlease use the console version instead:")
+    print("  python main_console.py")
+    print("\nOr install tkinter:")
+    print("  On Ubuntu/Debian: sudo apt-get install python3-tk")
+    print("  On Fedora: sudo dnf install python3-tkinter")
+    print("  On macOS: tkinter should be included with Python")
+    print("  On Windows: tkinter should be included with Python")
+    print("="*60)
+    sys.exit(1)
 
 class RobloxGroupJoinerUI:
     def __init__(self, root):

@@ -30,6 +30,15 @@ A powerful Python script that automatically joins Roblox groups at rapid speeds 
    ```bash
    pip install -r requirements.txt
    ```
+   
+   **Note**: If you're on Linux and want to use the GUI version, you may also need to install tkinter:
+   ```bash
+   # Ubuntu/Debian
+   sudo apt-get install python3-tk
+   
+   # Fedora
+   sudo dnf install python3-tkinter
+   ```
 
 3. **Configure the script**:
    - Open `input/config.json`
@@ -56,6 +65,8 @@ A powerful Python script that automatically joins Roblox groups at rapid speeds 
 
 ## 🚀 Usage
 
+### GUI Version (Recommended)
+
 1. **Run the script**:
    ```bash
    python main.py
@@ -67,6 +78,19 @@ A powerful Python script that automatically joins Roblox groups at rapid speeds 
    - (Optional) Add **proxies** in the text area
    - Click **▶ Start** to begin joining
    - Click **⬛ Stop** to stop the process
+
+### Console Version (If tkinter is not available)
+
+1. **Run the console version**:
+   ```bash
+   python main_console.py
+   ```
+
+2. **Follow the prompts**:
+   - Enter your Group ID
+   - Enter cookies (one per line, press Enter twice when done)
+   - Confirm to start
+   - Press Ctrl+C to stop
 
 ## 📝 How to Get Your Roblox Cookie
 

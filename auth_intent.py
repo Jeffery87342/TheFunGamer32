@@ -1,4 +1,10 @@
-from curl_cffi import requests
+try:
+    from curl_cffi.requests import Session as CurlSession
+    USE_CURL_CFFI = True
+except ImportError:
+    import requests
+    USE_CURL_CFFI = False
+
 from base64 import b64encode
 from time import time
 from cryptography.hazmat.primitives import serialization, hashes
@@ -30,7 +36,7 @@ class AuthIntent:
         return b64encode(signature).decode('utf-8')
 
     @staticmethod
-    def get_auth_intent(session: requests.Session) -> dict | None:
+    def get_auth_intent(session) -> dict | None:
         try:
             key_pair = AuthIntent.generate_signing_key_pair_unextractable()
             private_key, public_key = key_pair

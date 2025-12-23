@@ -68,7 +68,14 @@ class GroupJoiner:
 
                 Output("CAPTCHA").log("Solving captcha")
 
-                solution = get_token(session, blob, session.proxy)
+                # Get proxy from session
+                proxy = None
+                if hasattr(session, 'proxy'):
+                    proxy = session.proxy
+                elif hasattr(session, 'proxies') and session.proxies:
+                    proxy = session.proxies.get('http') or session.proxies.get('https')
+                
+                solution = get_token(session, blob, proxy)
 
                 if solution == None:
                     raise ValueError("Failed to solve captcha")

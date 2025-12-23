@@ -1,6 +1,12 @@
+try:
+    from curl_cffi.requests import Session as CurlSession
+    USE_CURL_CFFI = True
+except ImportError:
+    import requests
+    USE_CURL_CFFI = False
+
 from util import Util
 from time import sleep
-from curl_cffi import requests
 import json
 
 config = Util.get_config()
@@ -9,8 +15,11 @@ SOLVER_KEY = config.get("solverKey", "")
 API_URL = "https://api.funbypass.com"
 
 
-def get_token(roblox_session: requests.Session, blob, proxy):
-    session = requests.Session()
+def get_token(roblox_session, blob, proxy):
+    if USE_CURL_CFFI:
+        session = CurlSession()
+    else:
+        session = requests.Session()
 
     task_payload = {
         "clientKey": SOLVER_KEY,
