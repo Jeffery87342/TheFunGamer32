@@ -375,30 +375,28 @@ class RobloxGroupJoinerUI:
 
 
 def main():
-    # Redirect output to GUI
-    original_output_init = Output.__init__
-    
-    def custom_init(self, level):
-        original_output_init(self, level)
-        self.gui_log = None
-        
-    def custom_log(self, *args, **kwargs):
-        message = ' '.join(str(arg) for arg in args)
-        if hasattr(self, 'gui_log') and self.gui_log:
-            self.gui_log(message, self.level)
-        # Also print to console
-        original_log(self, *args, **kwargs)
-        
-    original_log = Output.log
-    Output.__init__ = custom_init
-    Output.log = custom_log
-    
+    """
+    Main function - starts the GUI version of the application
+    """
     # Create GUI
     root = tk.Tk()
     app = RobloxGroupJoinerUI(root)
     
-    # Set GUI log function
-    Output.log.__func__.__defaults__ = (app.log,)
+    # Monkey-patch Output.log to also send to GUI
+    original_log = Output.log
+    
+    def gui_enhanced_log(self, *args, **kwargs):
+        # Call original log (console output)
+        original_log(self, *args, **kwargs)
+        
+        # Also send to GUI if available
+        try:
+            message = ' '.join(str(arg) for arg in args)
+            app.log(message, self.level)
+        except:
+            pass  # GUI not ready or closed
+    
+    Output.log = gui_enhanced_log
     
     root.mainloop()
 
