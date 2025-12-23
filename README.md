@@ -40,7 +40,13 @@ A powerful Python script that automatically joins Roblox groups at rapid speeds 
    sudo dnf install python3-tkinter
    ```
 
-3. **Configure the script**:
+3. **Test the installation** (optional but recommended):
+   ```bash
+   python test.py
+   ```
+   This will verify that all modules load correctly and dependencies are installed.
+
+4. **Configure the script**:
    - Open `input/config.json`
    - Add your FunBypass.com API key:
      ```json
@@ -126,17 +132,31 @@ The script uses the official Roblox Groups API:
 
 ## 🛠️ Troubleshooting
 
+**"ModuleNotFoundError" or import errors**:
+- Run `pip install -r requirements.txt` to install dependencies
+- Run `python test.py` to diagnose the issue
+
+**"No module named 'tkinter'" or tkinter errors**:
+- Use the console version: `python main_console.py`
+- Or install tkinter (see Installation section)
+
 **"Rate limited" error**:
-- Add more proxies to `input/proxies.txt`
+- Add more proxies to `proxies.txt` or `input/proxies.txt`
 - Reduce the number of threads in `config.json`
 
 **"Failed to solve captcha"**:
-- Check your FunBypass.com API key
+- Check your FunBypass.com API key in `input/config.json`
 - Ensure you have credits on your FunBypass account
 
 **"Proxy failed to make request"**:
-- Verify your proxy format is correct
+- Verify your proxy format is correct: `******host:port`
 - Check if your proxies are working
+
+**Script doesn't join any groups**:
+- Verify the Group ID is correct
+- Check that your .ROBLOSECURITY cookies are valid
+- Ensure the account isn't already in the group
+- Check the console/log for specific error messages
 
 ## 📦 Dependencies
 
