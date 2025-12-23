@@ -2,27 +2,36 @@ try:
     from curl_cffi.requests import Session as CurlSession
     USE_CURL_CFFI = True
 except ImportError:
-    import requests
     USE_CURL_CFFI = False
 
+import requests
 from util import Util
 
 class Session:
     @staticmethod
     def session():
         browsers = [
-            ("chrome136", '"Google Chrome";v="141", "Not?A_Brand";v="8", "Chromium";v="141"', "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36")
+            ("chrome120", '"Google Chrome";v="120", "Not?A_Brand";v="8", "Chromium";v="120"', "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
         ]
 
         browser = browsers[0]
         proxy = Util.get_random_proxy()
 
+        # Try to use curl-cffi with error handling
         if USE_CURL_CFFI:
-            session = CurlSession(
-                impersonate="chrome_133",
-                proxy=proxy,
-                verify=False
-            )
+            try:
+                session = CurlSession(
+                    impersonate="chrome120",  # Using widely supported version
+                    proxy=proxy,
+                    verify=False
+                )
+            except Exception as e:
+                # If curl-cffi fails, fall back to requests
+                print(f"curl-cffi failed ({e}), using requests library instead")
+                session = requests.Session()
+                if proxy:
+                    session.proxies = {'http': proxy, 'https': proxy}
+                session.verify = False
         else:
             session = requests.Session()
             if proxy:
@@ -48,7 +57,7 @@ class Session:
         }
 
         session.headers = Util.sort_dict_order(headers)
-        if USE_CURL_CFFI and proxy:
+        if USE_CURL_CFFI and hasattr(session, 'proxy') and proxy:
             session.proxy = proxy
 
         return session
