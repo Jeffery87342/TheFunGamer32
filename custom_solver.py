@@ -16,6 +16,18 @@ API_URL = "https://api.funbypass.com"
 
 
 def get_token(roblox_session, blob, proxy):
+    """
+    Solve FunCaptcha using FunBypass.com API
+    
+    Args:
+        roblox_session: The Roblox session (not used directly, kept for compatibility)
+        blob: The captcha blob from Roblox challenge
+        proxy: Proxy string in format: protocol://username:password@host:port
+               Supported protocols: http, https, socks4, socks5
+    
+    Returns:
+        Captcha solution token or None if failed
+    """
     if USE_CURL_CFFI:
         session = CurlSession()
     else:
@@ -26,13 +38,14 @@ def get_token(roblox_session, blob, proxy):
         "task": {
             "type": "FunCaptchaTask",
             "websiteURL": "https://www.roblox.com/",
-            "websitePublicKey": "A2A14B1D-1AF3-C791-9BBC-EE33CC7A0A6F",
-            "websiteSubdomain": "roblox.com",
+            "websitePublicKey": "476068BF-9607-4799-B53D-966BE98E2B81",
+            "websiteSubdomain": "arkoselabs.roblox.com",
             "data": json.dumps({"blob": blob}),
             "proxy": proxy,
         },
     }
 
+    # Step 1: Create captcha solving task
     create_resp = session.post(f"{API_URL}/createTask", json=task_payload, timeout=60)
     if create_resp.status_code != 200:
         raise ValueError(f"createTask HTTP {create_resp.status_code}: {create_resp.text}")
@@ -43,8 +56,9 @@ def get_token(roblox_session, blob, proxy):
     if not task_id:
         raise ValueError(f"createTask missing taskId: {create_data}")
 
-    for _ in range(60):
-        sleep(1)
+    # Step 2: Poll for solution (120 iterations with 0.5s sleep = 60 seconds max)
+    for _ in range(120):
+        sleep(0.5)
         result_resp = session.get(f"{API_URL}/getTaskResult/{task_id}", timeout=30)
         if result_resp.status_code not in (200, 202):
             continue

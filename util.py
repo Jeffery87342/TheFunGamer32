@@ -28,11 +28,23 @@ config = load_config()
 class Util:
     @staticmethod
     def get_random_proxy() -> str:
+        """
+        Get a random proxy from the loaded proxy list.
+        
+        Expected proxy format: protocol://user:pass@ip:port
+        Examples:
+            - http://username:password@proxy-server.com:8080
+            - https://user:pass@192.168.1.1:3128
+            - socks4://user:pass@proxy.example.com:1080
+            - socks5://user:pass@proxy.example.com:1080
+        
+        Returns:
+            Proxy string in the correct format, or None if no proxies available
+        """
         if proxies:
             proxy = choice(proxies).strip()
-            # Ensure proxy has http:// prefix
-            if not proxy.startswith('http://') and not proxy.startswith('https://'):
-                proxy = f'http://{proxy}'
+            # Proxies should already be in protocol://user:pass@ip:port format
+            # Just return as-is, no modification needed
             return proxy
         return None
     

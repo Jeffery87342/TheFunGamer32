@@ -7,6 +7,7 @@ from util import Util
 from custom_solver import get_token
 from json import loads, dumps
 from base64 import b64encode, b64decode
+import os
 
 LOCK = Lock()
 
@@ -19,119 +20,147 @@ class GroupJoiner:
 
             session = Session.session()
             
-            # Set cookie
+            # Set cookie for authentication
             session.cookies.set('.ROBLOSECURITY', cookie, domain='.roblox.com')
 
-            # Get CSRF token - use a lightweight endpoint
+            # Step 1: Get CSRF token by making a request that will fail but return the token
+            # Using the logout endpoint is the standard way to get CSRF token
+            session.headers = Session.set_api_request_headers(session.headers)
+            session.headers = Util.sort_dict_order(session.headers)
+            
+            Output("INFO").log("Fetching CSRF token...")
             resp = session.post("https://auth.roblox.com/v2/logout")
             
             if resp.status_code == 429:
-                raise ValueError("Rate limited")
+                raise ValueError("Rate limited - Need more proxies or slower rate")
 
             csrf = resp.headers.get("x-csrf-token")
             
+            if not csrf:
+                # Try alternative method - make any POST request to trigger CSRF token return
+                resp = session.post("https://groups.roblox.com/v1/groups/{group_id}/users")
+                csrf = resp.headers.get("x-csrf-token")
+            
             if csrf:
-                session.headers = {
-                    **session.headers,
-                    "x-csrf-token": csrf
-                }
+                session.headers["x-csrf-token"] = csrf
+                session.headers = Util.sort_dict_order(session.headers)
+                Output("INFO").log(f"CSRF token acquired: {csrf[:20]}...")
+            else:
+                raise ValueError("Failed to acquire CSRF token")
 
-            session.headers = Session.set_api_request_headers(session.headers)
-            session.headers = Util.sort_dict_order(session.headers)
-
-            # Attempt to join group
+            # Step 2: Attempt to join group
+            Output("INFO").log(f"Sending join request to group {group_id}...")
             resp = session.post(f"https://groups.roblox.com/v1/groups/{group_id}/users")
 
             if resp.status_code == 429:
-                raise ValueError("Rate limited")
+                raise ValueError("Rate limited - Need more proxies or slower rate")
 
+            # Success - joined without captcha
             if resp.status_code == 200:
                 counter.increment()
                 Output("SUCCESS").log(f"Successfully joined group {group_id}")
                 
+                # Create output directory if it doesn't exist
+                os.makedirs("output", exist_ok=True)
                 with LOCK:
                     with open("output/joined_groups.txt", "a", encoding="utf-8") as file:
                         file.write(f"{group_id}|{cookie[:50]}...\n")
                 return
 
-            # Handle captcha challenge
-            if resp.status_code == 403:
+            # Handle captcha challenge (403 with challenge headers)
+            if resp.status_code == 403 or resp.headers.get("rblx-challenge-id"):
                 challenge_id = resp.headers.get("rblx-challenge-id")
                 
                 if not challenge_id:
-                    raise ValueError("Failed to join group - Forbidden (No captcha challenge)")
+                    raise ValueError(f"Failed to join group - Forbidden (Status: {resp.status_code}, No captcha challenge)")
                 
-                metadata = loads(b64decode(resp.headers.get(
-                    "rblx-challenge-metadata").encode("utf-8")).decode("utf-8"))
+                challenge_metadata_b64 = resp.headers.get("rblx-challenge-metadata")
+                if not challenge_metadata_b64:
+                    raise ValueError("Captcha challenge received but no metadata")
+                
+                metadata = loads(b64decode(challenge_metadata_b64.encode("utf-8")).decode("utf-8"))
                 blob = metadata.get("dataExchangeBlob")
                 captcha_id = metadata.get("unifiedCaptchaId")
 
-                Output("CAPTCHA").log("Solving captcha")
+                if not blob:
+                    raise ValueError("No captcha blob in challenge metadata")
 
-                # Get proxy from session
+                Output("CAPTCHA").log(f"Captcha challenge detected (ID: {captcha_id})")
+
+                # Get proxy from session for captcha solver
                 proxy = None
                 if hasattr(session, 'proxy'):
                     proxy = session.proxy
                 elif hasattr(session, 'proxies') and session.proxies:
                     proxy = session.proxies.get('http') or session.proxies.get('https')
                 
+                if not proxy:
+                    Output("CAPTCHA").log("⚠️  No proxy available - captcha solving may fail")
+                else:
+                    Output("CAPTCHA").log(f"Using proxy for captcha: {proxy[:30]}...")
+
+                # Solve captcha using FunBypass
+                Output("CAPTCHA").log("Sending to FunBypass.com for solving...")
                 solution = get_token(session, blob, proxy)
 
                 if solution == None:
-                    raise ValueError("Failed to solve captcha")
+                    raise ValueError("Failed to solve captcha - FunBypass returned no solution")
 
-                token = solution.split("|")[0]
-                token_info = solution.split(
-                    "pk=A2A14B1D-1AF3-C791-9BBC-EE33CC7A0A6F|")[1].split("|cdn_url=")[0]
+                Output("CAPTCHA").log(f"Captcha solved! Token: {solution[:50]}...")
 
-                Output("CAPTCHA").log(f"Solved captcha | {token}|{token_info}")
-
+                # Prepare challenge response
                 challenge_metadata = dumps({
                     "unifiedCaptchaId": captcha_id,
                     "captchaToken": solution,
                     "actionType": "GroupJoin"
                 }, separators=(',', ':'))
 
-                payload = dumps({
+                continue_payload = dumps({
                     "challengeId": challenge_id,
                     "challengeType": "captcha",
                     "challengeMetadata": challenge_metadata
                 }, separators=(',', ':'))
 
+                # Submit captcha solution to Roblox
+                Output("CAPTCHA").log("Submitting captcha solution to Roblox...")
                 resp = session.post(
-                    "https://apis.roblox.com/challenge/v1/continue", content=payload.encode("utf-8"))
+                    "https://apis.roblox.com/challenge/v1/continue", 
+                    content=continue_payload.encode("utf-8")
+                )
 
                 if resp.status_code != 200:
-                    raise ValueError("Rejected by continue API")
+                    raise ValueError(f"Captcha continue API rejected solution - Status: {resp.status_code}")
 
-                session.headers = {
-                    **session.headers,
-                    "rblx-challenge-id": challenge_id,
-                    "rblx-challenge-metadata": b64encode(challenge_metadata.encode("utf-8")).decode("utf-8"),
-                    "rblx-challenge-type": "captcha"
-                }
-
+                # Add challenge headers for retry
+                session.headers["rblx-challenge-id"] = challenge_id
+                session.headers["rblx-challenge-metadata"] = b64encode(challenge_metadata.encode("utf-8")).decode("utf-8")
+                session.headers["rblx-challenge-type"] = "captcha"
                 session.headers = Util.sort_dict_order(session.headers)
 
                 # Retry joining group with captcha solution
+                Output("CAPTCHA").log("Retrying group join with captcha solution...")
                 resp = session.post(f"https://groups.roblox.com/v1/groups/{group_id}/users")
 
-                if resp.status_code != 200:
-                    raise ValueError(f"Rejected by group join API - Status: {resp.status_code}")
-
-                counter.increment()
-                Output("SUCCESS").log(f"Successfully joined group {group_id}")
-                
-                with LOCK:
-                    with open("output/joined_groups.txt", "a", encoding="utf-8") as file:
-                        file.write(f"{group_id}|{cookie[:50]}...\n")
-                return
+                if resp.status_code == 200:
+                    counter.increment()
+                    Output("SUCCESS").log(f"Successfully joined group {group_id} (with captcha)")
+                    
+                    os.makedirs("output", exist_ok=True)
+                    with LOCK:
+                        with open("output/joined_groups.txt", "a", encoding="utf-8") as file:
+                            file.write(f"{group_id}|{cookie[:50]}...\n")
+                    return
+                else:
+                    raise ValueError(f"Group join failed after captcha - Status: {resp.status_code}, Response: {resp.text[:100]}")
             
             # Handle other status codes
-            raise ValueError(f"Unexpected response status: {resp.status_code}")
+            raise ValueError(f"Unexpected response - Status: {resp.status_code}, Response: {resp.text[:200]}")
 
         except Exception as e:
-            if "Failed to perform" in str(e):
+            error_msg = str(e)
+            if "Failed to perform" in error_msg or "ProxyError" in error_msg or "ConnectionError" in error_msg:
                 Output("ERROR").log("Error | Proxy failed to make request")
+            elif "Rate limited" in error_msg:
+                Output("ERROR").log(f"Error | {error_msg}")
             else:
-                Output("ERROR").log(f"Error | {str(e)}")
+                Output("ERROR").log(f"Error | {error_msg}")
