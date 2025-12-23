@@ -78,12 +78,52 @@ class GroupJoiner:
                 if not challenge_metadata_b64:
                     raise ValueError("Captcha challenge received but no metadata")
                 
-                metadata = loads(b64decode(challenge_metadata_b64.encode("utf-8")).decode("utf-8"))
+                try:
+                    metadata = loads(b64decode(challenge_metadata_b64.encode("utf-8")).decode("utf-8"))
+                except Exception as e:
+                    raise ValueError(f"Failed to decode challenge metadata: {e}")
+                
+                Output("CAPTCHA").log(f"Challenge metadata: {metadata}")
+                
                 blob = metadata.get("dataExchangeBlob")
                 captcha_id = metadata.get("unifiedCaptchaId")
+                challenge_type_from_metadata = metadata.get("challengeType", "captcha")
 
                 if not blob:
-                    raise ValueError("No captcha blob in challenge metadata")
+                    # Some challenges might not require captcha solving
+                    # Try to continue without solving if it's not a captcha challenge
+                    Output("INFO").log(f"No blob found. Challenge type: {challenge_type_from_metadata}, Metadata: {metadata}")
+                    
+                    # If it's not a captcha challenge, try to continue anyway
+                    if challenge_type_from_metadata != "captcha":
+                        Output("INFO").log(f"Non-captcha challenge detected ({challenge_type_from_metadata}). Attempting to continue...")
+                        
+                        # Try to continue with the challenge
+                        continue_payload = dumps({
+                            "challengeId": challenge_id,
+                            "challengeType": challenge_type_from_metadata,
+                            "challengeMetadata": b64encode(dumps(metadata).encode("utf-8")).decode("utf-8")
+                        }, separators=(',', ':'))
+                        
+                        resp = session.post(
+                            "https://apis.roblox.com/challenge/v1/continue", 
+                            content=continue_payload.encode("utf-8")
+                        )
+                        
+                        if resp.status_code == 200:
+                            Output("SUCCESS").log("Challenge accepted without captcha solving")
+                            # Retry the group join
+                            resp = session.post(f"https://groups.roblox.com/v1/groups/{group_id}/users")
+                            if resp.status_code == 200:
+                                counter.increment()
+                                Output("SUCCESS").log(f"Successfully joined group {group_id}")
+                                os.makedirs("output", exist_ok=True)
+                                with LOCK:
+                                    with open("output/joined_groups.txt", "a", encoding="utf-8") as file:
+                                        file.write(f"{group_id}|{cookie[:50]}...\n")
+                                return
+                    
+                    raise ValueError(f"No captcha blob in challenge metadata. Challenge type: {challenge_type_from_metadata}")
 
                 Output("CAPTCHA").log(f"Captcha challenge detected (ID: {captcha_id})")
 
