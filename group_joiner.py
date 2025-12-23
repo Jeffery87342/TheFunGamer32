@@ -88,42 +88,67 @@ class GroupJoiner:
                 blob = metadata.get("dataExchangeBlob")
                 captcha_id = metadata.get("unifiedCaptchaId")
                 challenge_type_from_metadata = metadata.get("challengeType", "captcha")
-
-                if not blob:
-                    # Some challenges might not require captcha solving
-                    # Try to continue without solving if it's not a captcha challenge
-                    Output("INFO").log(f"No blob found. Challenge type: {challenge_type_from_metadata}, Metadata: {metadata}")
+                
+                # Check for newer challenge format with sessionId and genericChallengeId
+                session_id = metadata.get("sessionId")
+                generic_challenge_id = metadata.get("sharedParameters", {}).get("genericChallengeId") if isinstance(metadata.get("sharedParameters"), dict) else None
+                
+                if not blob and session_id and generic_challenge_id:
+                    # This is a newer Roblox challenge format that doesn't use FunCaptcha
+                    Output("INFO").log(f"Detected newer challenge format with sessionId: {session_id}")
+                    Output("INFO").log(f"Generic challenge ID: {generic_challenge_id}")
                     
-                    # If it's not a captcha challenge, try to continue anyway
-                    if challenge_type_from_metadata != "captcha":
-                        Output("INFO").log(f"Non-captcha challenge detected ({challenge_type_from_metadata}). Attempting to continue...")
+                    # Try to continue with the generic challenge
+                    # Build redemption metadata
+                    redemption_metadata = {
+                        "sessionId": session_id,
+                        "redemptionToken": metadata.get("redemptionToken", "")
+                    }
+                    
+                    continue_payload = dumps({
+                        "challengeId": challenge_id,
+                        "challengeType": "generic",
+                        "challengeMetadata": b64encode(dumps(redemption_metadata).encode("utf-8")).decode("utf-8")
+                    }, separators=(',', ':'))
+                    
+                    Output("INFO").log("Attempting to continue with generic challenge...")
+                    resp = session.post(
+                        "https://apis.roblox.com/challenge/v1/continue", 
+                        content=continue_payload.encode("utf-8")
+                    )
+                    
+                    if resp.status_code == 200:
+                        Output("SUCCESS").log("Generic challenge accepted")
+                        # Add challenge headers to session
+                        session.headers.update({
+                            "rblx-challenge-id": challenge_id,
+                            "rblx-challenge-metadata": challenge_metadata_b64,
+                            "rblx-challenge-type": "generic"
+                        })
                         
-                        # Try to continue with the challenge
-                        continue_payload = dumps({
-                            "challengeId": challenge_id,
-                            "challengeType": challenge_type_from_metadata,
-                            "challengeMetadata": b64encode(dumps(metadata).encode("utf-8")).decode("utf-8")
-                        }, separators=(',', ':'))
-                        
-                        resp = session.post(
-                            "https://apis.roblox.com/challenge/v1/continue", 
-                            content=continue_payload.encode("utf-8")
-                        )
+                        # Retry the group join with challenge headers
+                        Output("INFO").log("Retrying group join with challenge headers...")
+                        resp = session.post(f"https://groups.roblox.com/v1/groups/{group_id}/users")
                         
                         if resp.status_code == 200:
-                            Output("SUCCESS").log("Challenge accepted without captcha solving")
-                            # Retry the group join
-                            resp = session.post(f"https://groups.roblox.com/v1/groups/{group_id}/users")
-                            if resp.status_code == 200:
-                                counter.increment()
-                                Output("SUCCESS").log(f"Successfully joined group {group_id}")
-                                os.makedirs("output", exist_ok=True)
-                                with LOCK:
-                                    with open("output/joined_groups.txt", "a", encoding="utf-8") as file:
-                                        file.write(f"{group_id}|{cookie[:50]}...\n")
-                                return
-                    
-                    raise ValueError(f"No captcha blob in challenge metadata. Challenge type: {challenge_type_from_metadata}")
+                            counter.increment()
+                            Output("SUCCESS").log(f"Successfully joined group {group_id}")
+                            os.makedirs("output", exist_ok=True)
+                            with LOCK:
+                                with open("output/joined_groups.txt", "a", encoding="utf-8") as file:
+                                    file.write(f"{group_id}|{cookie[:50]}...\n")
+                            return
+                        else:
+                            Output("ERROR").log(f"Group join failed after challenge: Status {resp.status_code}, Body: {resp.text[:200]}")
+                            raise ValueError(f"Failed to join group after generic challenge: {resp.status_code}")
+                    else:
+                        Output("ERROR").log(f"Generic challenge continue failed: Status {resp.status_code}, Body: {resp.text[:200]}")
+                        raise ValueError(f"Failed to continue generic challenge: {resp.status_code}")
+
+                if not blob:
+                    # No blob and not a generic challenge - unknown challenge type
+                    Output("ERROR").log(f"Unknown challenge format. Metadata: {metadata}")
+                    raise ValueError(f"No captcha blob and unrecognized challenge format. Challenge type: {challenge_type_from_metadata}")
 
                 Output("CAPTCHA").log(f"Captcha challenge detected (ID: {captcha_id})")
 
