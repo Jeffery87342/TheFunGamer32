@@ -114,7 +114,7 @@ class GroupJoiner:
                     Output("INFO").log("Attempting to continue with generic challenge...")
                     resp = session.post(
                         "https://apis.roblox.com/challenge/v1/continue", 
-                        content=continue_payload.encode("utf-8")
+                        data=continue_payload.encode("utf-8")
                     )
                     
                     if resp.status_code == 200:
